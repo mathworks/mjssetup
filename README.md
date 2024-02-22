@@ -6,8 +6,31 @@ For information about security configurations for MATLAB Job Scheduler clusters,
 
 ## Installation
 
-<!-- TODO 3219679 add instructions for downloading from GitHub -->
-TBD
+You can download pre-compiled binaries for Windows, macOS, and Linux from the [Releases](https://github.com/mathworks/mjssetup/releases) page.
+
+### Installation on Windows
+
+1. Navigate to the [Releases](https://github.com/mathworks/mjssetup/releases) page.
+2. Download the latest `mjssetup-win64.zip` file from the assets section of the latest release.
+3. Unzip the downloaded file.
+
+### Installation on Intel macOS
+
+1. Navigate to the [Releases](https://github.com/mathworks/mjssetup/releases) page.
+2. Download the latest `mjssetup-maci64.tar.gz` file from the assets section of the latest release.
+3. Extract the downloaded file by double-clicking on it or using the command `tar -xzf mjssetup-mcai64.tar.gz` in the terminal.
+
+### Installation on Apple Silicon macOS
+
+1. Navigate to the [Releases](https://github.com/mathworks/mjssetup/releases) page.
+2. Download the latest `mjssetup-maca64.tar.gz` file from the assets section of the latest release.
+3. Extract the downloaded file by double-clicking on it or using the command `tar -xzf mjssetup-maca64.tar.gz` in the terminal.
+
+### Installation on Linux
+
+1. Navigate to the [Releases](https://github.com/mathworks/mjssetup/releases) page.
+2. Download the latest `mjssetup-glnxa64.tar.gz` file from the assets section of the latest release.
+3. Extract the downloaded file using the command `tar -xzf mjssetup-glnxa64.tar.gz` in the terminal.
 
 ## Usage
 
