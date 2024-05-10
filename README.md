@@ -1,20 +1,21 @@
 # Setup Tool for MATLAB Job Scheduler
 
-Use the mjssetup tool to create shared secrets, signed client certificates and cluster profiles when you configure a MATLAB&reg; Job Scheduler cluster with secure communication.
+Use the mjssetup tool to create shared secrets, signed client certificates, and cluster profiles when you configure a MATLAB&reg; Job Scheduler cluster with secure communication.
 You do not require access to a MATLAB installation.
-For information about security configurations for MATLAB Job Scheduler clusters, see the documentation for [MATLAB Job Scheduler Cluster Security](https://www.mathworks.com/help/matlab-parallel-server/set-matlab-job-scheduler-cluster-security.html).
+For information about security configurations for MATLAB Job Scheduler clusters, see [MATLAB Job Scheduler Cluster Security](https://www.mathworks.com/help/matlab-parallel-server/set-matlab-job-scheduler-cluster-security.html).
 
-## Building from source
+## Build Setup Tool
 
-To compile the mjssetup executable from the source code, you must use Go version 1.21.4 or later.
+To use the setup tool, you must first compile the mjssetup executable.
 
 To download a zip file of this repository, at the top of this repository page, select Code > Download ZIP.
-Alternatively, to clone this repository to your computer with git installed, run the following command on your operating system's command line:
+Alternatively, to clone this repository to your computer with Git installed, run the following command on your operating system's command line:
 
 ```
 git clone https://github.com/mathworks/mjssetup
 ```
 
+To compile the mjssetup executable from the source code, you must use Go version 1.21.4 or later.
 Use Go to compile the mjssetup executable:
 ```
 go build -o mjssetup cmd/mjssetup/main.go
