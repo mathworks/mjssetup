@@ -261,6 +261,10 @@ func TestOpenFileForWrite(t *testing.T) {
 	tmpFile := filepath.Join(tmpDir, "to-write.txt")
 	gotWriter, err := openFileForWrite(tmpFile)
 	require.NoError(t, err, "error opening file for write")
+	t.Cleanup(func() {
+		err := gotWriter.Close()
+		require.NoError(t, err, "error closing file")
+	})
 	require.NotNil(t, gotWriter, "writer returned from openFileForWrite should not be nil")
 }
 
