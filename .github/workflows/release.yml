@@ -1,0 +1,72 @@
+# Copyright 2024 The MathWorks, Inc.
+name: Release Artifacts
+
+on:
+  release:
+    types: [created]
+
+env:
+  go_version: 1.22.2
+
+jobs:
+  release-linux:
+    runs-on: ubuntu-latest
+    env:
+      artifact: mjssetup-glnxa64.tar.gz
+
+    steps:
+    - name: Check out the repo
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.go_version }}
+
+    - name: Run unit tests
+      run: go test ./...
+
+    - name: Build executable
+      run: env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o mjssetup cmd/mjssetup/main.go
+
+    - name: Run executable
+      run: ./mjssetup -help
+
+    - name: Create tar file
+      run: tar -czvf ${{ env.artifact }} mjssetup
+
+    - name: Upload artifact
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: gh release upload ${{ github.event.release.tag_name }} ${{ env.artifact }}
+
+  release-windows:
+    runs-on: windows-latest
+    env:
+      artifact: mjssetup-win64.zip
+
+    steps:
+    - name: Check out the repo
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.go_version }}
+
+    - name: Run unit tests
+      run: go test ./...
+
+    - name: Build executable
+      run: env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o mjssetup.exe cmd/mjssetup/main.go
+
+    - name: Run executable
+      run: ./mjssetup.exe -help
+
+    - name: Create zip file
+      run: Compress-Archive -Path mjssetup.exe -Destination ${{ env.artifact }}
+
+    - name: Upload artifact
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: gh release upload ${{ github.event.release.tag_name }} ${{ env.artifact }}
