@@ -15,6 +15,7 @@ import (
 var createSharedSecretCmd = "create-shared-secret"
 var generateCertificateCmd = "generate-certificate"
 var createProfileCmd = "create-profile"
+var generateMetricsCertificatesAndKeysCmd = "generate-metrics-certificates-and-keys"
 
 type CommandGetter struct {
 	keytool keytool.Keytool
@@ -33,9 +34,10 @@ func (c *CommandGetter) GetCommandFunc(args []string) (func() error, error) {
 	}
 
 	funcs := map[string]func([]string, *flag.FlagSet) error{
-		createSharedSecretCmd:  c.runCreateSharedSecret,
-		generateCertificateCmd: c.runGenerateCertificate,
-		createProfileCmd:       c.runCreateProfile,
+		createSharedSecretCmd:                 c.runCreateSharedSecret,
+		generateCertificateCmd:                c.runGenerateCertificate,
+		createProfileCmd:                      c.runCreateProfile,
+		generateMetricsCertificatesAndKeysCmd: c.runGenerateMetricsCertificatesAndKeys,
 	}
 
 	cmdName := args[0]
@@ -167,6 +169,42 @@ func parseCreateProfileInputs(args []string, flags *flag.FlagSet) (*keytool.Crea
 	return &inputs, nil
 }
 
+func (c *CommandGetter) runGenerateMetricsCertificatesAndKeys(args []string, flags *flag.FlagSet) error {
+	inputs, err := parseGenerateMetricsCertificatesAndKeysInputs(args, flags)
+	if err != nil || inputs == nil {
+		return err
+	}
+	return c.keytool.GenerateMetricsCertificatesAndKeys(inputs)
+}
+
+func parseGenerateMetricsCertificatesAndKeysInputs(args []string, flags *flag.FlagSet) (*keytool.GenerateMetricsCertificatesAndKeysInputs, error) {
+	inputs := keytool.GenerateMetricsCertificatesAndKeysInputs{}
+	flags.StringVar(&inputs.JobManagerHost, "jobmanagerhost", "", "Hostname of the job manager")
+	flags.StringVar(&inputs.OutDir, "outdir", "", "Directory to write the certificate and key files to")
+	if showHelpIfNeeded(generateMetricsCertificatesAndKeysCmd, args, flags) {
+		return nil, nil
+	}
+	err := flags.Parse(args)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for required input arguments
+	if inputs.JobManagerHost == "" {
+		return nil, getErrorForMissingArg(generateMetricsCertificatesAndKeysCmd, "must provide a job manager hostname (-jobmanagerhost)")
+	}
+
+	// If an output directory was not provided, use the current working directory
+	if inputs.OutDir == "" {
+		inputs.OutDir, err = os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &inputs, nil
+}
+
 var longHelpStrings = map[string]string{
 	createSharedSecretCmd: `Create a shared secret to establish trust within a cluster.
 
@@ -194,6 +232,20 @@ cluster is started with the REQUIRE_CLIENT_CERTIFICATE
 flag set to 'true', you must specify the location of the
 correct certificate file to authenticate the connection
 to the cluster.`,
+	generateMetricsCertificatesAndKeysCmd: `Generate the following certificate and key files for secure metrics:
+  - A self-signed CA certificate file 'ca.crt' and corresponding
+    key file 'ca.key'.  Both the job manager and Prometheus use
+	'ca.crt' as their CA file.
+  - A certificate file 'jobmanager.crt', which has the job manager's
+    hostname embedded in it and is signed by the CA, along with the
+	corresponding key file 'jobmanager.key'.  The job manager uses
+	these for its certificate and key files, respectively.
+  - A certificate file 'prometheus.crt', which is signed by the CA,
+    and the corresponding key file 'prometheus.key'.  Prometheus uses
+	these for its certificate and key files, respectively.
+The command generates the files in the folder specified by '-outdir'.
+If you do not specify '-outdir', the command generates the files in
+the current folder.`,
 }
 
 type usageExample struct {
@@ -214,6 +266,9 @@ var usageExamples = map[string][]usageExample{
 		{"Create a profile for a cluster started with the REQUIRE_CLIENT_CERTIFICATE flag set to 'true' by injecting a client certificate", "%s %s -name <cluster-name> -host <cluster-host> -certificate <certificate-file> [-outfile <output-file>]"},
 		{"Create a profile for a cluster started with the REQUIRE_CLIENT_CERTIFICATE flag set to 'true' by generating a new signed client certificate and injecting it into the profile", "%s %s -name <cluster-name> -host <cluster-host> -secretfile <secret-file> [-outfile <output-file>]"},
 	},
+	generateMetricsCertificatesAndKeysCmd: {
+		{"Generate a self-signed CA certificate and a pair of certificates signed by the CA (along with the corresponding keys) for use with metrics", "%s %s -jobmanagerhost <hostname> [-outdir <dir>]"},
+	},
 }
 
 // Print general help text
@@ -227,6 +282,7 @@ func getAllUsageText() string {
 		createSharedSecretCmd,
 		generateCertificateCmd,
 		createProfileCmd,
+		generateMetricsCertificatesAndKeysCmd,
 	}
 	txt := fmt.Sprintf("Usage: %s <command> [<args>]", getExecutableName())
 	for _, cmd := range allCmds {

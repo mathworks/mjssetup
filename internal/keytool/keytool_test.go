@@ -35,7 +35,8 @@ func TestCreateSharedSecret(t *testing.T) {
 	certCreator.EXPECT().CreateSharedSecret().Once().Return(secret, nil)
 
 	// Verify that the expected secret gets written
-	keytool.CreateSharedSecret(&CreateSharedSecretInputs{Outfile: outfile})
+	err := keytool.CreateSharedSecret(&CreateSharedSecretInputs{Outfile: outfile})
+	require.NoError(t, err)
 	verifyStructWritten(t, secret, byteWriter)
 }
 
@@ -83,10 +84,11 @@ func TestGenerateCertificate(t *testing.T) {
 	certCreator.EXPECT().GenerateCertificate(secret).Once().Return(cert, nil)
 
 	// Verify that the expected certificate gets written
-	keytool.GenerateCertificate(&GenerateCertificateInputs{
+	err = keytool.GenerateCertificate(&GenerateCertificateInputs{
 		Outfile:    outfile,
 		SecretFile: secretfile,
 	})
+	require.NoError(t, err)
 	verifyStructWritten(t, cert, byteWriter)
 }
 
@@ -236,12 +238,56 @@ func TestCreateProfileFromSecret(t *testing.T) {
 	verifyStructWritten(t, expectedProfile, byteWriter)
 }
 
+func TestGenerateMetricsCertificatesAndKeys(t *testing.T) {
+	tmpDir := t.TempDir()
+	outDir := filepath.Join(tmpDir, "outdir") // Should be created automatically!
+	jobManagerHost := "dummyhostname"
+
+	// Set up mock secret creation
+	secret := &certificate.SharedSecret{
+		CertPEM: "test-ca-cert",
+		KeyPEM:  "test-ca-key",
+	}
+
+	// Set up mock certificates
+	jobManagerCert := &certificate.Certificate{
+		ClientCert: "test-jobmanager-cert",
+		ClientKey:  "test-jobmanager-key",
+		ServerCert: "test-server-cert",
+	}
+	prometheusCert := &certificate.Certificate{
+		ClientCert: "test-prometheus-cert",
+		ClientKey:  "test-prometheus-key",
+		ServerCert: "test-server-cert",
+	}
+
+	// Expect that the certCreator will generate the CA, job manager, and prometheus cert/key
+	// with a call to GenerateMetricsCertificatesAndKeys
+	keytool, certCreator := getKeytoolWithMockCertCreator(t)
+	certCreator.EXPECT().CreateSharedSecret().Once().Return(secret, nil)
+	certCreator.EXPECT().GenerateCertificateWithHostname(secret, jobManagerHost).Once().Return(jobManagerCert, nil)
+	certCreator.EXPECT().GenerateCertificate(secret).Once().Return(prometheusCert, nil)
+	err := keytool.GenerateMetricsCertificatesAndKeys(&GenerateMetricsCertificatesAndKeysInputs{
+		OutDir:         outDir,
+		JobManagerHost: jobManagerHost,
+	})
+	require.NoError(t, err)
+
+	// Verify that the expected certificate/key files get written
+	verifyTextWritten(t, filepath.Join(outDir, "ca.crt"), secret.CertPEM)
+	verifyTextWritten(t, filepath.Join(outDir, "ca.key"), secret.KeyPEM)
+	verifyTextWritten(t, filepath.Join(outDir, "jobmanager.crt"), jobManagerCert.ClientCert)
+	verifyTextWritten(t, filepath.Join(outDir, "jobmanager.key"), jobManagerCert.ClientKey)
+	verifyTextWritten(t, filepath.Join(outDir, "prometheus.crt"), prometheusCert.ClientCert)
+	verifyTextWritten(t, filepath.Join(outDir, "prometheus.key"), prometheusCert.ClientKey)
+}
+
 // Test the readFromFile function
 func TestReadFromFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test.txt")
 	fileContent := "my file contents"
-	err := os.WriteFile(tmpFile, []byte(fileContent), 0644)
+	err := os.WriteFile(tmpFile, []byte(fileContent), 0600)
 	require.NoError(t, err, "error writing test file")
 	gotBytes, err := readFromFile(tmpFile)
 	require.NoError(t, err, "error reading from file")
@@ -266,6 +312,23 @@ func TestOpenFileForWrite(t *testing.T) {
 		require.NoError(t, err, "error closing file")
 	})
 	require.NotNil(t, gotWriter, "writer returned from openFileForWrite should not be nil")
+}
+
+// Test the writeTextFile function
+func TestWriteTextFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "to-write.txt")
+	textToWrite := "This is a test string"
+	err := writeTextFile(tmpFile, textToWrite)
+	require.NoError(t, err, "error writing text file")
+	verifyTextWritten(t, tmpFile, textToWrite)
+}
+
+// Verify that the expected text is written to a file
+func verifyTextWritten(t *testing.T, file string, text string) {
+	content, err := os.ReadFile(file)
+	require.NoError(t, err, "error reading text file")
+	assert.Equalf(t, text, string(content), "wrong text written to file %s", file)
 }
 
 // Verify that the expected struct was written to a byte buffer
@@ -300,6 +363,14 @@ func getKeytoolWithMockReader(t *testing.T, expectedOutfile, expectedInFile stri
 	}
 
 	return keytool, byteWriter, mockCert
+}
+
+// Create a dummy Keytool that uses a mocked-out certificate creator
+func getKeytoolWithMockCertCreator(t *testing.T) (*keytoolImpl, *mockCertCreator.Creator) {
+	mockCert := mockCertCreator.NewCreator(t)
+	return &keytoolImpl{
+		certCreator: mockCert,
+	}, mockCert
 }
 
 // Byte buffer that implements the io.WriteCloser interface; this can be used in place of a real file writer

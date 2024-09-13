@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/mathworks/mjssetup/pkg/certificate"
 	"github.com/mathworks/mjssetup/pkg/profile"
@@ -17,6 +18,7 @@ type Keytool interface {
 	CreateSharedSecret(*CreateSharedSecretInputs) error
 	GenerateCertificate(*GenerateCertificateInputs) error
 	CreateProfile(*CreateProfileInputs) error
+	GenerateMetricsCertificatesAndKeys(*GenerateMetricsCertificatesAndKeysInputs) error
 }
 
 // Input arguments for CreateSharedSecret
@@ -38,6 +40,12 @@ type CreateProfileInputs struct {
 	CertFile   string
 	SecretFile string
 	UseSecret  bool
+}
+
+// Input arguments for GenerateMetricsCertificatesAndKeys
+type GenerateMetricsCertificatesAndKeysInputs struct {
+	OutDir         string
+	JobManagerHost string
 }
 
 // Implementation of Keytool
@@ -105,6 +113,50 @@ func (k *keytoolImpl) CreateProfile(inputs *CreateProfileInputs) error {
 	return writeJSON(file, &prof)
 }
 
+// Generate metrics certificates and keys
+func (k *keytoolImpl) GenerateMetricsCertificatesAndKeys(inputs *GenerateMetricsCertificatesAndKeysInputs) error {
+	// Generate the certificates and keys
+	secret, err := k.certCreator.CreateSharedSecret()
+	if err != nil {
+		return err
+	}
+
+	jobManagerCert, err := k.certCreator.GenerateCertificateWithHostname(secret, inputs.JobManagerHost)
+	if err != nil {
+		return err
+	}
+
+	prometheusCert, err := k.certCreator.GenerateCertificate(secret)
+	if err != nil {
+		return err
+	}
+
+	// Ensure the output directory exists
+	err = os.MkdirAll(inputs.OutDir, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	// Write all certificates and keys to files on disk
+	toWrite := map[string]string{
+		"ca.crt":         secret.CertPEM,
+		"ca.key":         secret.KeyPEM,
+		"jobmanager.crt": jobManagerCert.ClientCert,
+		"jobmanager.key": jobManagerCert.ClientKey,
+		"prometheus.crt": prometheusCert.ClientCert,
+		"prometheus.key": prometheusCert.ClientKey,
+	}
+
+	for filename, content := range toWrite {
+		err = writeTextFile(filepath.Join(inputs.OutDir, filename), content)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // Open a real file for writing
 func openFileForWrite(filename string) (io.WriteCloser, error) {
 	file, err := os.Create(filename)
@@ -132,6 +184,17 @@ func writeJSON[T any](writer io.Writer, content *T) error {
 		return fmt.Errorf("error encoding JSON: %v", err)
 	}
 	return nil
+}
+
+// Write text to a file
+func writeTextFile(filename string, text string) error {
+	file, err := openFileForWrite(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = io.WriteString(file, text)
+	return err
 }
 
 // Load a shared secret from a file and use it to generate a certificate

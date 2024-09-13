@@ -22,8 +22,6 @@ You can download pre-compiled binaries for Linux&reg; and Windows&reg; from the 
 
 ## Usage
 
-### Usage on Linux
-
 `mjssetup <command> [<args>]` executes the specified command using the specified input arguments.
 - `command` - Command to execute.
 - `args` - Inputs to the command to execute. The types of the inputs depend on the command.
@@ -39,27 +37,7 @@ For example, display the help text for the `create-shared-secret` command:
 mjssetup create-shared-secret -help
 ```
 
-### Usage on Windows
-
-`mjssetup.exe <command> [<args>]` executes the specified command using the specified input arguments.
-- `command` - Command to execute.
-- `args` - Inputs to the command to execute. The types of the inputs depend on the command.
-
-To display the help text for mjssetup, run
-```
-mjssetup.exe -help
-```
-
-You can also display help text for a specific command.
-For example, display the help text for the `create-shared-secret` command:
-```
-mjssetup.exe create-shared-secret -help
-```
-
 ### Examples
-
-The following examples assume you are running on Linux.
-To run the examples on Windows, replace `mjssetup` with `mjssetup.exe`.
 
 Create a shared secret to establish trust within a cluster.
 Specify the `create-shared-secret` command and a name for the shared secret file.
@@ -98,6 +76,13 @@ For example, create a cluster profile for the cluster "cluster-name", cluster ho
 The command creates a cluster profile file, "mjs-profile.json".
 ```
 mjssetup create-profile -name "cluster-name" -host "cluster-host" -secretfile "secret.json" -outfile "mjs-profile.json"
+```
+
+Generate certificate and key files for use with secure metrics.
+Specify the `generate-metrics-certificates-and-keys` command, the hostname of the job manager, and the output folder for the certificate and key files.
+For example, generate metrics certificate and key files for a job manager with hostname "jobmanager-host" in a folder named "metrics".
+```
+mjssetup generate-metrics-certificates-and-keys -jobmanagerhost "jobmanager-host" -outdir "metrics"
 ```
 
 ## Build Setup Tool from Source Code

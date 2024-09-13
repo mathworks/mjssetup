@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"time"
 )
 
@@ -19,6 +20,7 @@ import (
 type Creator interface {
 	CreateSharedSecret() (*SharedSecret, error)
 	GenerateCertificate(*SharedSecret) (*Certificate, error)
+	GenerateCertificateWithHostname(*SharedSecret, string) (*Certificate, error)
 	LoadSharedSecret([]byte) (*SharedSecret, error)
 }
 
@@ -55,7 +57,7 @@ const (
 
 // Create a shared secret and return it as a struct and a byte array
 func (*creatorImpl) CreateSharedSecret() (*SharedSecret, error) {
-	cert, key, err := generateCertAndKey(true, "server")
+	cert, key, err := generateCertAndKey(true, "server", "")
 	if err != nil {
 		return nil, err
 	}
@@ -85,13 +87,18 @@ func (*creatorImpl) CreateSharedSecret() (*SharedSecret, error) {
 
 // Generate a certificate from a shared secret
 func (c *creatorImpl) GenerateCertificate(secret *SharedSecret) (*Certificate, error) {
+	return c.GenerateCertificateWithHostname(secret, "")
+}
+
+// Generate a certificate from a shared secret with a specific hostname in DNSNames
+func (c *creatorImpl) GenerateCertificateWithHostname(secret *SharedSecret, hostname string) (*Certificate, error) {
 	if secret.cert == nil {
 		return nil, errors.New("shared secret does not contain a certificate")
 	}
 	if secret.key == nil {
 		return nil, errors.New("shared secret does not contain a private key")
 	}
-	cert, key, err := generateCertAndKey(false, "client")
+	cert, key, err := generateCertAndKey(false, "client", hostname)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +140,7 @@ func (c *creatorImpl) LoadSharedSecret(data []byte) (*SharedSecret, error) {
 }
 
 // Generate a private key and certificate template
-func generateCertAndKey(isCA bool, commonName string) (*x509.Certificate, *rsa.PrivateKey, error) {
+func generateCertAndKey(isCA bool, commonName string, hostname string) (*x509.Certificate, *rsa.PrivateKey, error) {
 	key, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error generating private key: %v", err)
@@ -154,6 +161,14 @@ func generateCertAndKey(isCA bool, commonName string) (*x509.Certificate, *rsa.P
 		BasicConstraintsValid: true,
 		IsCA:                  isCA,
 		SignatureAlgorithm:    x509.SHA512WithRSA,
+	}
+	if hostname != "" {
+		ip := net.ParseIP(hostname)
+		if ip != nil {
+			certTemplate.IPAddresses = append(certTemplate.IPAddresses, ip)
+		} else {
+			certTemplate.DNSNames = append(certTemplate.DNSNames, hostname)
+		}
 	}
 	return certTemplate, key, nil
 }
