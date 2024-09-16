@@ -4,6 +4,7 @@ package commands
 import (
 	"flag"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/mathworks/mjssetup/internal/keytool"
@@ -17,6 +18,7 @@ var allCmds = []string{
 	createSharedSecretCmd,
 	generateCertificateCmd,
 	createProfileCmd,
+	generateMetricsCertificatesAndKeysCmd,
 }
 
 // Check we get an error when no command name is provided
@@ -31,6 +33,14 @@ func TestGetAllUsageText(t *testing.T) {
 	txt := getAllUsageText()
 	for _, cmd := range allCmds {
 		require.Contains(t, txt, cmd, "command name missing from available commands string")
+	}
+}
+
+// Check that the longHelpStrings contains all commands
+func TestLongHelpStrings(t *testing.T) {
+	for _, cmd := range allCmds {
+		_, ok := longHelpStrings[cmd]
+		require.True(t, ok, "long help strings is missing an entry for "+cmd)
 	}
 }
 
@@ -285,6 +295,74 @@ func TestCreateProfileMissingArgs(t *testing.T) {
 			verifyErrorWhenRunningWithoutArg(t, fullArgs, r)
 		})
 	}
+}
+
+func TestParseGenerateMetricsCertificatesAndKeys(t *testing.T) {
+	testCases := []struct {
+		name           string
+		outDir         string
+		jobManagerHost string
+	}{
+		{"outdir specified", "/dummy/outdir", "dummyhostname"},
+		{"outdir not specified", "", "dummyhostname"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			args := []string{}
+			expectedInputs := keytool.GenerateMetricsCertificatesAndKeysInputs{
+				OutDir:         tc.outDir,
+				JobManagerHost: tc.jobManagerHost,
+			}
+			if tc.outDir == "" {
+				var err error
+				expectedInputs.OutDir, err = os.Getwd()
+				require.NoError(t, err)
+			} else {
+				args = append(args, "-outdir", tc.outDir)
+			}
+			args = append(args, "-jobmanagerhost", tc.jobManagerHost)
+			verifyInputParsing(t, generateMetricsCertificatesAndKeysCmd, args, &expectedInputs, parseGenerateMetricsCertificatesAndKeysInputs)
+		})
+	}
+}
+
+func TestGenerateMetricsCertificatesAndKeysMissingArgs(t *testing.T) {
+	fullArgs := []string{
+		generateMetricsCertificatesAndKeysCmd,
+		"-jobmanagerhost",
+		"dummyhostname",
+		"-outdir",
+		"/dummy/outdir",
+	}
+	requiredArgs := []string{
+		"jobmanagerhost",
+	}
+	for _, r := range requiredArgs {
+		t.Run(r, func(t *testing.T) {
+			verifyErrorWhenRunningWithoutArg(t, fullArgs, r)
+		})
+	}
+}
+
+// Verify that the GenerateMetricsCertificatesAndKeys method gets called when we run a generate-metrics-certificates-and-keys command
+func TestGenerateMetricsCertificatesAndKeys(t *testing.T) {
+	mockkeytool := mockkeytool.NewKeytool(t)
+	cmdGetter := CommandGetter{
+		keytool: mockkeytool,
+	}
+	outDir := "/tmp/outdir"
+	jobManagerHost := "dummyhostname"
+	args := []string{generateMetricsCertificatesAndKeysCmd, "-outdir", outDir, "-jobmanagerhost", jobManagerHost}
+	mockkeytool.EXPECT().GenerateMetricsCertificatesAndKeys(&keytool.GenerateMetricsCertificatesAndKeysInputs{
+		OutDir:         outDir,
+		JobManagerHost: jobManagerHost,
+	}).Return(nil)
+
+	cmdFunc, err := cmdGetter.GetCommandFunc(args)
+	require.NoError(t, err, "error getting command func")
+	err = cmdFunc()
+	require.NoError(t, err, "error running command")
 }
 
 // Check we get an error when a required argument is missing from the input arguments for a command
