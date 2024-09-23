@@ -94,7 +94,7 @@ Alternatively, to clone this repository to your computer with Git installed, run
 git clone https://github.com/mathworks/mjssetup
 ```
 
-To compile the mjssetup executable from the source code, you must use Go version 1.21.4 or later.
+To compile the mjssetup executable from the source code, you must use Go version 1.23 or later.
 Use Go to compile the mjssetup executable:
 ```
 go build -o mjssetup cmd/mjssetup/main.go
