@@ -1,407 +1,430 @@
-// Copyright 2023-2024 The MathWorks, Inc.
-package commands
+// Copyright 2023-2025 The MathWorks, Inc.
+package commands_test
 
 import (
-	"flag"
-	"fmt"
-	"os"
+	"strings"
 	"testing"
 
+	"github.com/mathworks/mjssetup/internal/commands"
 	"github.com/mathworks/mjssetup/internal/keytool"
-	mockkeytool "github.com/mathworks/mjssetup/mocks/keytool"
-
+	mockKeytool "github.com/mathworks/mjssetup/mocks/keytool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-var allCmds = []string{
-	createSharedSecretCmd,
-	generateCertificateCmd,
-	createProfileCmd,
-	generateMetricsCertificatesAndKeysCmd,
+func TestErrorNoCommand(t *testing.T) {
+	cr, _ := newWithMocks(t)
+	err := cr.RunCommand([]string{})
+	assert.Error(t, err, "Expected error when no command is provided")
 }
 
-// Check we get an error when no command name is provided
-func TestGetCommandFuncNoCommand(t *testing.T) {
-	cmdFunc, err := NewCommandGetter().GetCommandFunc([]string{})
-	require.Error(t, err, "expected error when no command name was provided")
-	require.Nil(t, cmdFunc, "command function should be nil when no command name was provided")
+func TestErrorUnknownCommand(t *testing.T) {
+	cr, _ := newWithMocks(t)
+	badCmd := "not-a-valid-command"
+	err := cr.RunCommand([]string{badCmd})
+	assert.Error(t, err, "Expected error when an unknown command is provided")
+	assert.Contains(t, err.Error(), badCmd, "Error should contain the unknown command")
 }
 
-// Check that the usage text contains all commands
-func TestGetAllUsageText(t *testing.T) {
-	txt := getAllUsageText()
-	for _, cmd := range allCmds {
-		require.Contains(t, txt, cmd, "command name missing from available commands string")
-	}
-}
+// Test printing general help text for mjssetup
+func TestPrintAllHelp(t *testing.T) {
+	for _, flag := range commands.HelpFlags {
+		cr, mocks := newWithMocks(t)
+		verifyCommandSuccess(t, cr, []string{flag})
 
-// Check that the longHelpStrings contains all commands
-func TestLongHelpStrings(t *testing.T) {
-	for _, cmd := range allCmds {
-		_, ok := longHelpStrings[cmd]
-		require.True(t, ok, "long help strings is missing an entry for "+cmd)
-	}
-}
-
-// Check behaviour when a help flag is passed instead of a valid command
-// e.g. mjssetup -h
-func TestHelpFlagNoCommand(t *testing.T) {
-	for _, h := range helpFlags {
-		t.Run(h, func(t *testing.T) {
-			cmdFunc, err := NewCommandGetter().GetCommandFunc([]string{h})
-			assert.NoError(t, err, "should not get an error when running mjssetup with a help flag")
-			assert.NotNil(t, cmdFunc, "should get a valid function when running mjssetup with a help flag")
-			err = cmdFunc() // run the print help command
-			assert.NoError(t, err, "command function returned for help flag should not error")
-		})
-	}
-}
-
-// Test that showHelpIfNeeded correctly shows help text when there is a help flag in the command-line arguments along with a valid command
-// e.g. mjssetup create-profile -h
-func TestHelpFlagWithCommand(t *testing.T) {
-	argSets := map[string][]string{
-		"-h":                 {"-h"},
-		"--help with others": {"-somearg", "10", "--help"},
-		"-help with others":  {"-help", "-otherarg"},
-	}
-	for name, args := range argSets {
-		t.Run(name, func(t *testing.T) {
-			flags := flag.NewFlagSet("test", 1)
-			showedHelp := showHelpIfNeeded(createProfileCmd, args, flags)
-			require.True(t, showedHelp, "help text should have been displayed when args contained help flag")
-		})
-	}
-
-	// Check we did not display help when no help arg was included
-	showedHelp := showHelpIfNeeded("test", []string{"-arg1", "test", "-arg2", "test"}, nil)
-	require.False(t, showedHelp, "help text should not have been displayed when no help arg was provided")
-}
-
-func TestParseCreateSharedSecretInputs(t *testing.T) {
-	testCases := []struct {
-		name                 string
-		outfile              string
-		expectedInputOutfile string
-	}{
-		{"JSON outfile", "test.json", "test.json"},
-		{"non-JSON outfile", "test", "test.json"},
-		{"default outfile", "", "secret.json"},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			args := []string{}
-			if tc.outfile != "" {
-				args = []string{"-outfile", tc.outfile}
-			}
-			expectedInputs := keytool.CreateSharedSecretInputs{
-				Outfile: tc.expectedInputOutfile,
-			}
-			verifyInputParsing(t, createSharedSecretCmd, args, &expectedInputs, parseCreateSharedSecretInputs)
-		})
-	}
-}
-
-func TestParseGenerateCertificateInputs(t *testing.T) {
-	testCases := []struct {
-		name                 string
-		outfile              string
-		expectedInputOutfile string
-	}{
-		{"JSON outfile", "test.json", "test.json"},
-		{"non-JSON outfile", "test", "test.json"},
-		{"default outfile", "", "certificate.json"},
-	}
-
-	secretfile := "secret.json"
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			args := []string{"-secretfile", secretfile}
-			if tc.outfile != "" {
-				args = append(args, "-outfile", tc.outfile)
-			}
-			expectedInputs := keytool.GenerateCertificateInputs{
-				Outfile:    tc.expectedInputOutfile,
-				SecretFile: secretfile,
-			}
-			verifyInputParsing(t, generateCertificateCmd, args, &expectedInputs, parseGenerateCertificateInputs)
-		})
-	}
-}
-
-// Verify that the CreateSharedSecret method gets called when we run a create-shared-secret command
-func TestCreateSharedSecret(t *testing.T) {
-	mockkeytool := mockkeytool.NewKeytool(t)
-	cmdGetter := CommandGetter{
-		keytool: mockkeytool,
-	}
-	outfile := "test.json"
-	args := []string{createSharedSecretCmd, "-outfile", outfile}
-	mockkeytool.EXPECT().CreateSharedSecret(&keytool.CreateSharedSecretInputs{Outfile: outfile}).Return(nil)
-
-	cmdFunc, err := cmdGetter.GetCommandFunc(args)
-	require.NoError(t, err, "error getting command func")
-	err = cmdFunc()
-	require.NoError(t, err, "error running command")
-}
-
-// Verify that the GenerateCertificate method gets called when we run a generate-certificate command
-func TestGenerateCertificate(t *testing.T) {
-	mockkeytool := mockkeytool.NewKeytool(t)
-	cmdGetter := CommandGetter{
-		keytool: mockkeytool,
-	}
-	outfile := "test.json"
-	secretfile := "secret.json"
-	args := []string{generateCertificateCmd, "-outfile", outfile, "-secretfile", secretfile}
-	mockkeytool.EXPECT().GenerateCertificate(&keytool.GenerateCertificateInputs{
-		Outfile:    outfile,
-		SecretFile: secretfile,
-	}).Return(nil)
-
-	cmdFunc, err := cmdGetter.GetCommandFunc(args)
-	require.NoError(t, err, "error getting command func")
-	err = cmdFunc()
-	require.NoError(t, err, "error running command")
-}
-
-// Verify that the CreateProfile method gets called when we run a create-profile command
-func TestCreateProfile(t *testing.T) {
-	mockkeytool := mockkeytool.NewKeytool(t)
-	cmdGetter := CommandGetter{
-		keytool: mockkeytool,
-	}
-	outfile := "test.json"
-	certfile := "secret.json"
-	name := "my-profile"
-	host := "localhost"
-	args := []string{createProfileCmd, "-outfile", outfile, "-certificate", certfile, "-name", name, "-host", host}
-	mockkeytool.EXPECT().CreateProfile(&keytool.CreateProfileInputs{
-		Outfile:   outfile,
-		CertFile:  certfile,
-		Name:      name,
-		UseSecret: false,
-		Host:      host,
-	}).Return(nil)
-
-	cmdFunc, err := cmdGetter.GetCommandFunc(args)
-	require.NoError(t, err, "error getting command func")
-	err = cmdFunc()
-	require.NoError(t, err, "error running command")
-}
-
-// Test parsing the create-profile inputs
-func TestParseCreateProfileInputs(t *testing.T) {
-	clusterName := "my-cluster"
-	host := "test-host"
-	certfile := "cert.json"
-	secretfile := "secret.json"
-
-	// Test all combinations of passing in a secret file and certificate file
-	testCases := []struct {
-		name                 string
-		passSecretFile       bool
-		passCertFile         bool
-		expectToUseSecret    bool
-		outfile              string
-		expectedInputOutfile string
-	}{
-		{"just_certfile", false, true, false, "test.json", "test.json"},
-		{"just_secretfile", true, false, true, "test.json", "test.json"},
-		{"certfile_and_secretfile", true, true, false, "test.json", "test.json"},
-		{"non_json_outfile", false, false, false, "test", "test.json"},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			args := []string{
-				"-outfile",
-				tc.outfile,
-				"-name",
-				clusterName,
-				"-host",
-				host,
-			}
-			expectedInputs := keytool.CreateProfileInputs{
-				Outfile:   tc.expectedInputOutfile,
-				Host:      host,
-				Name:      clusterName,
-				UseSecret: tc.expectToUseSecret,
-			}
-			if tc.passCertFile {
-				args = append(args, "-certificate", certfile)
-				expectedInputs.CertFile = certfile
-			}
-			if tc.passSecretFile {
-				args = append(args, "-secretfile", secretfile)
-				expectedInputs.SecretFile = secretfile
-			}
-
-			verifyInputParsing(t, createProfileCmd, args, &expectedInputs, parseCreateProfileInputs)
-		})
-	}
-}
-
-// Check that the default output file matches the cluster name
-func TestCreateProfileDefaultOutfile(t *testing.T) {
-	clusterName := "my-cluster"
-	host := "test-host"
-	args := []string{
-		"-name",
-		clusterName,
-		"-host",
-		host,
-	}
-	expectedInputs := keytool.CreateProfileInputs{
-		Outfile: fmt.Sprintf("%s.json", clusterName),
-		Host:    host,
-		Name:    clusterName,
-	}
-	verifyInputParsing(t, "create profile no outfile", args, &expectedInputs, parseCreateProfileInputs)
-}
-
-func TestGenerateCertificateMissingArgs(t *testing.T) {
-	fullArgs := []string{
-		generateCertificateCmd,
-		"-outfile",
-		"test.json",
-		"-secretfile",
-		"secret.json",
-	}
-	verifyErrorWhenRunningWithoutArg(t, fullArgs, "secretfile")
-}
-
-func TestCreateProfileMissingArgs(t *testing.T) {
-	fullArgs := []string{
-		createProfileCmd,
-		"-outfile",
-		"profile.json",
-		"-certificate",
-		"cert.json",
-		"-name",
-		"myMJS",
-		"-host",
-		"myHost",
-	}
-	requiredArgs := []string{
-		"name",
-		"host",
-	}
-	for _, r := range requiredArgs {
-		t.Run(r, func(t *testing.T) {
-
-			verifyErrorWhenRunningWithoutArg(t, fullArgs, r)
-		})
-	}
-}
-
-func TestParseGenerateMetricsCertificatesAndKeys(t *testing.T) {
-	testCases := []struct {
-		name           string
-		outDir         string
-		jobManagerHost string
-	}{
-		{"outdir specified", "/dummy/outdir", "dummyhostname"},
-		{"outdir not specified", "", "dummyhostname"},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			args := []string{}
-			expectedInputs := keytool.GenerateMetricsCertificatesAndKeysInputs{
-				OutDir:         tc.outDir,
-				JobManagerHost: tc.jobManagerHost,
-			}
-			if tc.outDir == "" {
-				var err error
-				expectedInputs.OutDir, err = os.Getwd()
-				require.NoError(t, err)
-			} else {
-				args = append(args, "-outdir", tc.outDir)
-			}
-			args = append(args, "-jobmanagerhost", tc.jobManagerHost)
-			verifyInputParsing(t, generateMetricsCertificatesAndKeysCmd, args, &expectedInputs, parseGenerateMetricsCertificatesAndKeysInputs)
-		})
-	}
-}
-
-func TestGenerateMetricsCertificatesAndKeysMissingArgs(t *testing.T) {
-	fullArgs := []string{
-		generateMetricsCertificatesAndKeysCmd,
-		"-jobmanagerhost",
-		"dummyhostname",
-		"-outdir",
-		"/dummy/outdir",
-	}
-	requiredArgs := []string{
-		"jobmanagerhost",
-	}
-	for _, r := range requiredArgs {
-		t.Run(r, func(t *testing.T) {
-			verifyErrorWhenRunningWithoutArg(t, fullArgs, r)
-		})
-	}
-}
-
-// Verify that the GenerateMetricsCertificatesAndKeys method gets called when we run a generate-metrics-certificates-and-keys command
-func TestGenerateMetricsCertificatesAndKeys(t *testing.T) {
-	mockkeytool := mockkeytool.NewKeytool(t)
-	cmdGetter := CommandGetter{
-		keytool: mockkeytool,
-	}
-	outDir := "/tmp/outdir"
-	jobManagerHost := "dummyhostname"
-	args := []string{generateMetricsCertificatesAndKeysCmd, "-outdir", outDir, "-jobmanagerhost", jobManagerHost}
-	mockkeytool.EXPECT().GenerateMetricsCertificatesAndKeys(&keytool.GenerateMetricsCertificatesAndKeysInputs{
-		OutDir:         outDir,
-		JobManagerHost: jobManagerHost,
-	}).Return(nil)
-
-	cmdFunc, err := cmdGetter.GetCommandFunc(args)
-	require.NoError(t, err, "error getting command func")
-	err = cmdFunc()
-	require.NoError(t, err, "error running command")
-}
-
-// Check we get an error when a required argument is missing from the input arguments for a command
-func verifyErrorWhenRunningWithoutArg(t *testing.T, fullArgs []string, toRemove string) {
-	args := removeArg(fullArgs, toRemove)
-	cmdFunc, err := NewCommandGetter().GetCommandFunc(args)
-	assert.NoError(t, err)
-	err = cmdFunc()
-	require.Errorf(t, err, "expected error when running command with missing arg %s", toRemove)
-	require.Contains(t, err.Error(), toRemove, "expected error string to contain the missing arg")
-}
-
-// Remove an argument from an array
-func removeArg(fullArgs []string, toRemove string) []string {
-	removeNext := false
-	toKeep := []string{}
-	for _, arg := range fullArgs {
-		if arg == "-"+toRemove {
-			removeNext = true
-		} else {
-			if !removeNext {
-				toKeep = append(toKeep, arg)
-			}
-			removeNext = false
+		// Check the text that was written
+		gotTxt := mocks.writer.content
+		for _, cmd := range commands.AllCommands {
+			assert.Contains(t, gotTxt, cmd, "General help text should mention command")
 		}
 	}
-	return toKeep
 }
 
-// Check we get an error when attempting to use an invalid mjssetup command
-func TestErrorInvalidCommand(t *testing.T) {
-	cmdFunc, err := NewCommandGetter().GetCommandFunc([]string{"this-is-not-a-command"})
-	require.Error(t, err, "should get error when command is invalid")
-	require.Nil(t, cmdFunc, "command function should be nil when command is invalid")
+func TestCreateSharedSecretHelp(t *testing.T) {
+	verifyPrintCommandHelp(t, commands.CreateSharedSecretCmd, []string{commands.OutfileArg}, []string{})
 }
 
-// Check that a parsing function returns the expected input struct for a given array of input arguments
-func verifyInputParsing[T any](t *testing.T, desc string, args []string, expectedInputs *T, parseFunc func([]string, *flag.FlagSet) (*T, error)) {
-	gotInputs, err := parseFunc(args, flag.NewFlagSet("test", 1))
-	assert.NoErrorf(t, err, "Error parsing inputs (%s)", desc)
-	require.Equalf(t, *gotInputs, *expectedInputs, "Unexpected inputs (%s)", desc)
+func TestGenerateCertificateHelp(t *testing.T) {
+	verifyPrintCommandHelp(t, commands.GenerateCertificateCmd, []string{commands.OutfileArg, commands.SecretfileArg}, []string{})
+}
+
+func TestCreateProfileHelp(t *testing.T) {
+	verifyPrintCommandHelp(t, commands.CreateProfileCmd, []string{
+		commands.OutfileArg,
+		commands.SecretfileArg,
+		commands.HostArg,
+		commands.NameArg,
+		commands.CertificateArg,
+	}, []string{commands.MetadataArg})
+}
+
+func TestGenerateMetricsCertificatesAndKeysHelp(t *testing.T) {
+	verifyPrintCommandHelp(t, commands.GenerateMetricsCertificatesAndKeysCmd, []string{commands.OutdirArg, commands.JobManagerHostArg}, []string{})
+}
+
+func TestCreateSharedSecretNoArgs(t *testing.T) {
+	cr, mocks := newWithMocks(t)
+	args := []string{commands.CreateSharedSecretCmd}
+
+	// Calling create-shaerd-secret with no args should request secret file be written to the default location
+	expectedInputs := &keytool.CreateSharedSecretInputs{
+		Outfile: commands.DefaultSecretFile,
+	}
+	mocks.keytool.EXPECT().CreateSharedSecret(expectedInputs).Return(nil)
+	verifyCommandSuccess(t, cr, args)
+}
+
+func TestCreateSharedSecretWithOutfile(t *testing.T) {
+	outfileJson := "my_outfile.json"
+	verifyCreateSharedSecretOutfile(t, outfileJson, outfileJson)
+}
+
+func TestCreateSharedSecretNoExtension(t *testing.T) {
+	outfileNoExt := "my_outfile"
+	verifyCreateSharedSecretOutfile(t, outfileNoExt, outfileNoExt+".json")
+}
+
+func TestCreateSharedSecretCapitalJSONExtension(t *testing.T) {
+	outfile := "my_outfile.JSON"
+	verifyCreateSharedSecretOutfile(t, outfile, outfile)
+}
+
+func TestGenerateCertificateWithOutfile(t *testing.T) {
+	outfile := "my-cert.json"
+	verifyGenerateCertificateOutfile(t, outfile, outfile)
+}
+
+func TestGenerateCertificateNoExtension(t *testing.T) {
+	outfileNoExt := "my-cert"
+	verifyGenerateCertificateOutfile(t, outfileNoExt, outfileNoExt+".json")
+}
+
+func TestGenerateCertificateDefaultOutfile(t *testing.T) {
+	secretFile := "my-secret.json"
+	cr, mocks := newWithMocks(t)
+	args := []string{commands.GenerateCertificateCmd, "-" + commands.SecretfileArg, secretFile}
+	expectedInputs := &keytool.GenerateCertificateInputs{
+		Outfile:    commands.DefaultCertificateFile,
+		SecretFile: secretFile,
+	}
+	mocks.keytool.EXPECT().GenerateCertificate(expectedInputs).Return(nil)
+	verifyCommandSuccess(t, cr, args)
+}
+
+func TestGenerateCertificateErrorNoSecretFile(t *testing.T) {
+	cr, _ := newWithMocks(t)
+	args := []string{commands.GenerateCertificateCmd} // Do not specify a secret file
+	err := cr.RunCommand(args)
+	assert.Error(t, err, "Expected error when generate-certificate is called without specifying a secret file")
+	assert.Contains(t, err.Error(), commands.SecretfileArg, "Error should mention secret file argument")
+}
+
+func TestCreateProfileMissingHost(t *testing.T) {
+	cr, _ := newWithMocks(t)
+	args := []string{commands.CreateProfileCmd, "-" + commands.NameArg, "my-profile"}
+	err := cr.RunCommand(args)
+	assert.Error(t, err, "Expected error when create-profile is called without specifying a host")
+	assert.Contains(t, err.Error(), commands.HostArg, "Error should mention host argument")
+}
+
+func TestCreateProfileMissingName(t *testing.T) {
+	cr, _ := newWithMocks(t)
+	args := []string{commands.CreateProfileCmd, "-" + commands.HostArg, "myhost"}
+	err := cr.RunCommand(args)
+	assert.Error(t, err, "Expected error when create-profile is called without specifying a name")
+	assert.Contains(t, err.Error(), commands.NameArg, "Error should mention name argument")
+}
+
+func TestCreateProfileNoCerts(t *testing.T) {
+	cr, mocks := newWithMocks(t)
+	host := "myhost"
+	name := "my-profile-name"
+	args := []string{commands.CreateProfileCmd, "-" + commands.HostArg, host, "-" + commands.NameArg, name}
+
+	mocks.keytool.EXPECT().CreateProfile(&keytool.CreateProfileInputs{
+		Host:    host,
+		Name:    name,
+		Outfile: name + ".json",
+	}).Return(nil)
+	err := cr.RunCommand(args)
+	require.NoError(t, err)
+}
+
+func TestCreateProfileWithCertfile(t *testing.T) {
+	cr, mocks := newWithMocks(t)
+	host := "myhost"
+	name := "my-profile-name"
+	certFile := "my-cert.json"
+	args := []string{commands.CreateProfileCmd, "-" + commands.HostArg, host, "-" + commands.NameArg, name, "-" + commands.CertificateArg, certFile}
+
+	mocks.keytool.EXPECT().CreateProfile(&keytool.CreateProfileInputs{
+		Host:      host,
+		Name:      name,
+		Outfile:   name + ".json",
+		CertFile:  certFile,
+		UseSecret: false,
+	}).Return(nil)
+	err := cr.RunCommand(args)
+	require.NoError(t, err)
+}
+
+func TestCreateProfileWithSecret(t *testing.T) {
+	cr, mocks := newWithMocks(t)
+	host := "myhost"
+	name := "my-profile-name"
+	secretFile := "my-shared-secret.json"
+	args := []string{commands.CreateProfileCmd,
+		"-" + commands.HostArg, host,
+		"-" + commands.NameArg, name,
+		"-" + commands.SecretfileArg, secretFile}
+
+	mocks.keytool.EXPECT().CreateProfile(&keytool.CreateProfileInputs{
+		Host:       host,
+		Name:       name,
+		Outfile:    name + ".json",
+		SecretFile: secretFile,
+		UseSecret:  true,
+	}).Return(nil)
+	err := cr.RunCommand(args)
+	require.NoError(t, err)
+}
+
+func TestCreateProfileBothSecretAndCert(t *testing.T) {
+	cr, mocks := newWithMocks(t)
+	host := "myhost"
+	name := "my-profile-name"
+	secretFile := "secret.json"
+	certFile := "cert.json"
+	args := []string{commands.CreateProfileCmd,
+		"-" + commands.HostArg, host,
+		"-" + commands.NameArg, name,
+		"-" + commands.SecretfileArg, secretFile,
+		"-" + commands.CertificateArg, certFile}
+
+	// Calling this command should succeed, but print a warning
+	mocks.keytool.EXPECT().CreateProfile(&keytool.CreateProfileInputs{
+		Host:       host,
+		Name:       name,
+		Outfile:    name + ".json",
+		SecretFile: secretFile,
+		CertFile:   certFile,
+		UseSecret:  false, // Expect UseSecret=false in this scenario
+	}).Return(nil)
+	err := cr.RunCommand(args)
+	require.NoError(t, err)
+	gotTxt := mocks.writer.content
+	assert.Contains(t, gotTxt, "Warning", "Expected a warning message when both secret and certificate are provided")
+}
+
+func TestCreateProfileWithOutfile(t *testing.T) {
+	outfile := "profile.json"
+	verifyCreateProfileOutfile(t, outfile, outfile)
+}
+
+func TestCreateProfileNoExtension(t *testing.T) {
+	outfileNoExt := "profile"
+	verifyCreateProfileOutfile(t, outfileNoExt, outfileNoExt+".json")
+}
+
+func TestCreateProfileMetadataSingleKVPair(t *testing.T) {
+	key := "mykey"
+	value := "myval"
+	input := key + "=" + value
+	verifyCreateProfileMetadata(t, input, map[string]string{key: value})
+}
+
+func TestCreateProfileMetadataMultipleKVPairs(t *testing.T) {
+	pairs := []string{}
+	expectedMetadata := map[string]string{
+		"key1": "val1",
+		"key2": "val2",
+		"key3": "val3",
+	}
+	for k, v := range expectedMetadata {
+		pairs = append(pairs, k+"="+v)
+	}
+	input := strings.Join(pairs, ",")
+	verifyCreateProfileMetadata(t, input, expectedMetadata)
+}
+
+func TestCreateProfileEmptyMetadata(t *testing.T) {
+	verifyCreateProfileMetadata(t, "", nil)
+}
+
+func TestCreateProfileMetadataErrorNoKey(t *testing.T) {
+	metadataArg := "key1=val1,=val2"
+	name := "myname"
+	host := "myhost"
+
+	cr, _ := newWithMocks(t)
+	args := []string{commands.CreateProfileCmd,
+		"-" + commands.MetadataArg, metadataArg,
+		"-" + commands.NameArg, name,
+		"-" + commands.HostArg, host}
+
+	err := cr.RunCommand(args)
+	assert.Error(t, err, "Expected error when metadata key-value pair is missing a key")
+	assert.Contains(t, err.Error(), "val2", "Error should mention value with missing key")
+}
+
+func TestCreateProfileMetadataBadKVFormat(t *testing.T) {
+	metadataArg := "key1=val1=test"
+	name := "myname"
+	host := "myhost"
+
+	cr, _ := newWithMocks(t)
+	args := []string{commands.CreateProfileCmd,
+		"-" + commands.MetadataArg, metadataArg,
+		"-" + commands.NameArg, name,
+		"-" + commands.HostArg, host}
+
+	err := cr.RunCommand(args)
+	assert.Error(t, err, "Expected an error when metadata key-value pair is malformed")
+	assert.Contains(t, err.Error(), metadataArg, "Error message should indicate the problematic input")
+}
+
+func TestGenerateMetricsCertificatesAndKeys(t *testing.T) {
+	cr, mocks := newWithMocks(t)
+	jmHost := "jmhost"
+	outdir := "my-outdir"
+	args := []string{commands.GenerateMetricsCertificatesAndKeysCmd,
+		"-" + commands.JobManagerHostArg, jmHost,
+		"-" + commands.OutdirArg, outdir,
+	}
+
+	mocks.keytool.EXPECT().GenerateMetricsCertificatesAndKeys(&keytool.GenerateMetricsCertificatesAndKeysInputs{
+		JobManagerHost: jmHost,
+		OutDir:         outdir,
+	}).Return(nil)
+	verifyCommandSuccess(t, cr, args)
+}
+
+func TestGenerateMetricsCertificatesAndKeysMissingJMHost(t *testing.T) {
+	cr, _ := newWithMocks(t)
+	outdir := "my-outdir"
+	args := []string{commands.GenerateMetricsCertificatesAndKeysCmd,
+		"-" + commands.OutdirArg, outdir,
+	}
+
+	err := cr.RunCommand(args)
+	assert.Error(t, err, "Expected error when Job Manager host is missing")
+	assert.Contains(t, err.Error(), commands.JobManagerHostArg, "Error should mention job manager host argument")
+}
+
+// If the -outdir argument is not provided, we should just pass the keytool an empty string for the outdir
+func TestGenerateMetricsCertificatesAndKeysNoOutdir(t *testing.T) {
+	cr, mocks := newWithMocks(t)
+	jmHost := "jmhost"
+	args := []string{commands.GenerateMetricsCertificatesAndKeysCmd,
+		"-" + commands.JobManagerHostArg, jmHost,
+	}
+
+	mocks.keytool.EXPECT().GenerateMetricsCertificatesAndKeys(&keytool.GenerateMetricsCertificatesAndKeysInputs{
+		JobManagerHost: jmHost,
+		OutDir:         "",
+	}).Return(nil)
+	verifyCommandSuccess(t, cr, args)
+}
+
+func verifyCommandSuccess(t *testing.T, cr *commands.CommandRunner, args []string) {
+	err := cr.RunCommand(args)
+	assert.NoErrorf(t, err, "Got error from running command with args: %v", args)
+}
+
+func verifyCreateSharedSecretOutfile(t *testing.T, outfileArg, expectedOutfile string) {
+	cr, mocks := newWithMocks(t)
+	args := []string{commands.CreateSharedSecretCmd, "-" + commands.OutfileArg, outfileArg}
+	expectedInputs := &keytool.CreateSharedSecretInputs{
+		Outfile: expectedOutfile,
+	}
+	mocks.keytool.EXPECT().CreateSharedSecret(expectedInputs).Return(nil)
+	verifyCommandSuccess(t, cr, args)
+}
+
+func verifyGenerateCertificateOutfile(t *testing.T, outfileArg, expectedOutfile string) {
+	secretFile := "my-secret.json"
+	cr, mocks := newWithMocks(t)
+	args := []string{commands.GenerateCertificateCmd,
+		"-" + commands.OutfileArg, outfileArg,
+		"-" + commands.SecretfileArg, secretFile}
+	expectedInputs := &keytool.GenerateCertificateInputs{
+		Outfile:    expectedOutfile,
+		SecretFile: secretFile,
+	}
+	mocks.keytool.EXPECT().GenerateCertificate(expectedInputs).Return(nil)
+	verifyCommandSuccess(t, cr, args)
+}
+
+func verifyCreateProfileOutfile(t *testing.T, outfileArg, expectedOutfile string) {
+	name := "myname"
+	host := "myhost"
+	cr, mocks := newWithMocks(t)
+	args := []string{commands.CreateProfileCmd,
+		"-" + commands.OutfileArg, outfileArg,
+		"-" + commands.NameArg, name,
+		"-" + commands.HostArg, host}
+	expectedInputs := &keytool.CreateProfileInputs{
+		Outfile: expectedOutfile,
+		Name:    name,
+		Host:    host,
+	}
+	mocks.keytool.EXPECT().CreateProfile(expectedInputs).Return(nil)
+	verifyCommandSuccess(t, cr, args)
+}
+
+func verifyCreateProfileMetadata(t *testing.T, metadataArg string, expectedMetadata map[string]string) {
+	name := "myname"
+	host := "myhost"
+	cr, mocks := newWithMocks(t)
+	args := []string{commands.CreateProfileCmd,
+		"-" + commands.MetadataArg, metadataArg,
+		"-" + commands.NameArg, name,
+		"-" + commands.HostArg, host}
+	expectedInputs := &keytool.CreateProfileInputs{
+		Outfile:  name + ".json",
+		Name:     name,
+		Host:     host,
+		Metadata: expectedMetadata,
+	}
+	mocks.keytool.EXPECT().CreateProfile(expectedInputs).Return(nil)
+	verifyCommandSuccess(t, cr, args)
+}
+
+func verifyPrintCommandHelp(t *testing.T, cmd string, documentedArgs, undocumentedArgs []string) {
+	for _, flag := range commands.HelpFlags {
+		cr, mocks := newWithMocks(t)
+		verifyCommandSuccess(t, cr, []string{cmd, flag})
+
+		// Check the text that was written
+		gotTxt := mocks.writer.content
+		assert.Containsf(t, gotTxt, cmd, "Help text for '%s' should mention command", cmd)
+		for _, arg := range documentedArgs {
+			assert.Containsf(t, gotTxt, arg, "Help text for '%s' should mention argument '%s'", cmd, arg)
+		}
+		for _, arg := range undocumentedArgs {
+			assert.NotContainsf(t, gotTxt, arg, "Help text for '%s' should not mention undocumented argument '%s'", cmd, arg)
+		}
+	}
+}
+
+type mocks struct {
+	keytool *mockKeytool.Keytool
+	writer  *testStringWriter
+}
+
+func newWithMocks(t *testing.T) (*commands.CommandRunner, *mocks) {
+	mockKeytool := mockKeytool.NewKeytool(t)
+	fakeWriter := &testStringWriter{}
+	return commands.NewCommandRunner(mockKeytool, fakeWriter), &mocks{
+		keytool: mockKeytool,
+		writer:  fakeWriter,
+	}
+}
+
+type testStringWriter struct {
+	content string
+}
+
+func (w *testStringWriter) WriteString(input string) {
+	w.content += input
 }

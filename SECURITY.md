@@ -1,3 +1,4 @@
+<!-- Copyright 2025 The MathWorks, Inc. -->
 # Reporting Security Vulnerabilities
 
 If you believe you have discovered a security vulnerability, please report it to

@@ -78,7 +78,7 @@ The command creates a cluster profile file, "mjs-profile.json".
 mjssetup create-profile -name "cluster-name" -host "cluster-host" -secretfile "secret.json" -outfile "mjs-profile.json"
 ```
 
-Generate certificate and key files for use with secure metrics.
+Generate certificate and key files for use with encrypted metrics.
 Specify the `generate-metrics-certificates-and-keys` command, the hostname of the job manager, and the output folder for the certificate and key files.
 For example, generate metrics certificate and key files for a job manager with hostname "jobmanager-host" in a folder named "metrics".
 ```
@@ -112,5 +112,5 @@ The license is available in the [license.txt](license.txt) file in this reposito
 
 If you require assistance or have a request for additional features or capabilities, contact [MathWorks Technical Support](https://www.mathworks.com/support/contact_us.html).
 
-Copyright 2024 The MathWorks, Inc.
+Copyright 2024-2025 The MathWorks, Inc.
 

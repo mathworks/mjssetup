@@ -1,5 +1,5 @@
 // Package certificate contains functions for generating shared secrets and certificates.
-// Copyright 2023-2024 The MathWorks, Inc.
+// Copyright 2023-2025 The MathWorks, Inc.
 package certificate
 
 import (
@@ -14,6 +14,8 @@ import (
 	"math/big"
 	"net"
 	"time"
+
+	"golang.org/x/crypto/pkcs12"
 )
 
 // Mockable interface for creation of shared secrets and certificates
@@ -22,6 +24,7 @@ type Creator interface {
 	GenerateCertificate(*SharedSecret) (*Certificate, error)
 	GenerateCertificateWithHostname(*SharedSecret, string) (*Certificate, error)
 	LoadSharedSecret([]byte) (*SharedSecret, error)
+	LoadCertificate([]byte) (*Certificate, error)
 }
 
 // Struct to store a shared secret key pair, plus the PEM-encoded key and cert
@@ -117,8 +120,51 @@ func (c *creatorImpl) GenerateCertificateWithHostname(secret *SharedSecret, host
 	}, nil
 }
 
-// Load a shared secret struct from marshalled bytes
+// Load a shared secret from marshalled bytes.
+// The bytes can either be in PKCS12 or JSON format.
 func (c *creatorImpl) LoadSharedSecret(data []byte) (*SharedSecret, error) {
+	secret, ok, err := parseSharedSecretFromPKCS12(data)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return secret, nil
+	}
+	return parseSharedSecretFromJSON(data)
+}
+
+// Load a certificate from marshalled bytes in JSON format.
+func (c *creatorImpl) LoadCertificate(data []byte) (*Certificate, error) {
+	return parseCertificateFromJSON(data)
+}
+
+// Attempt to parse a shared secret from PKCS12 data.
+// If parsing fails, return false.
+// If parsing succeeds but another error occurs, return that error.
+func parseSharedSecretFromPKCS12(data []byte) (*SharedSecret, bool, error) {
+	privateKey, cert, err := pkcs12.Decode(data, "privatepw")
+	if err != nil {
+		return nil, false, nil
+	}
+
+	rsaKey, ok := privateKey.(*rsa.PrivateKey)
+	if !ok {
+		return nil, true, fmt.Errorf("private key is not an RSA key")
+	}
+	keyPEM, err := encodeKey(rsaKey)
+	if err != nil {
+		return nil, true, err
+	}
+
+	return &SharedSecret{
+		cert:    cert,
+		key:     rsaKey,
+		CertPEM: encodeCert(cert.Raw),
+		KeyPEM:  keyPEM,
+	}, true, nil
+}
+
+func parseSharedSecretFromJSON(data []byte) (*SharedSecret, error) {
 	var secret SharedSecret
 	err := json.Unmarshal(data, &secret)
 	if err != nil {
@@ -137,6 +183,15 @@ func (c *creatorImpl) LoadSharedSecret(data []byte) (*SharedSecret, error) {
 	secret.cert = cert
 	secret.key = key
 	return &secret, nil
+}
+
+func parseCertificateFromJSON(data []byte) (*Certificate, error) {
+	var cert Certificate
+	err := json.Unmarshal(data, &cert)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshaling certificate: %v", err)
+	}
+	return &cert, err
 }
 
 // Generate a private key and certificate template
@@ -253,5 +308,12 @@ func decodeKey(keyPEM string) (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("unexpected block type for private key: %s", block.Type)
 	}
 	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	return key.(*rsa.PrivateKey), err
+	if err != nil {
+		return nil, err
+	}
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("not an RSA private key")
+	}
+	return rsaKey, nil
 }

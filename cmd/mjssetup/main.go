@@ -1,25 +1,27 @@
-// Copyright 2023 The MathWorks, Inc.
+// Copyright 2023-2025 The MathWorks, Inc.
 package main
 
 import (
 	"fmt"
-	"github.com/mathworks/mjssetup/internal/commands"
 	"os"
+
+	"github.com/mathworks/mjssetup/internal/commands"
+	"github.com/mathworks/mjssetup/internal/filehandler"
+	"github.com/mathworks/mjssetup/internal/filekeytool"
+	"github.com/mathworks/mjssetup/pkg/certificate"
 )
 
 func main() {
-	cmdFunc, err := commands.NewCommandGetter().GetCommandFunc(os.Args[1:])
+	keyTool := filekeytool.New(&filehandler.OsFileHandler{}, certificate.New())
+	err := commands.NewCommandRunner(keyTool, &stdoutWriter{}).RunCommand(os.Args[1:])
 	if err != nil {
-		errorAndExit(err)
-	}
-
-	err = cmdFunc()
-	if err != nil {
-		errorAndExit(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }
 
-func errorAndExit(err error) {
-	fmt.Println(err)
-	os.Exit(1)
+type stdoutWriter struct{}
+
+func (w *stdoutWriter) WriteString(s string) {
+	fmt.Print(s)
 }

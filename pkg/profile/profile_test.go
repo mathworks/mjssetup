@@ -1,4 +1,4 @@
-// Copyright 2023-2024 The MathWorks, Inc.
+// Copyright 2023-2025 The MathWorks, Inc.
 package profile
 
 import (
@@ -17,6 +17,7 @@ func TestCreateProfileNoCert(t *testing.T) {
 	assert.Empty(t, prof.SchedulerComponent.Certificate, "certificate field should be empty when no cert provided")
 	assert.Empty(t, prof.SchedulerComponent.ClientPrivateKey, "client private key field should be empty when no cert provided")
 	assert.Empty(t, prof.SchedulerComponent.ClientCertificate, "client certificate field should be empty when no cert provided")
+	assert.Nil(t, prof.SchedulerComponent.Metadata, "metadata should be nil when not explicitly set")
 }
 
 func TestCreateProfileWithCert(t *testing.T) {
@@ -34,6 +35,19 @@ func TestCreateProfileWithCert(t *testing.T) {
 	assert.Equal(t, cert.ServerCert, prof.SchedulerComponent.Certificate, "profile certificate does not match input server certificate")
 	assert.Equal(t, cert.ClientCert, prof.SchedulerComponent.ClientCertificate, "profile client certificate does not match input client certificate")
 	assert.Equal(t, cert.ClientKey, prof.SchedulerComponent.ClientPrivateKey, "profile client private key does not match input client private key")
+	assert.Nil(t, prof.SchedulerComponent.Metadata, "metadata should be nil when not explicitly set")
+}
+
+func TestCreateProfileWithMetadata(t *testing.T) {
+	name := "my-profile-with-meta"
+	host := "localhost:8000"
+	metadata := map[string]string{
+		"field1": "value1",
+		"field2": "value2",
+	}
+	prof := CreateProfileWithMetadata(name, host, nil, metadata)
+	verifyProfileFields(t, prof, name, host)
+	assert.Equal(t, metadata, prof.SchedulerComponent.Metadata, "Expected profile to contain metadata")
 }
 
 func verifyProfileFields(t *testing.T, prof *Profile, expectedName, expectedHost string) {
@@ -41,4 +55,5 @@ func verifyProfileFields(t *testing.T, prof *Profile, expectedName, expectedHost
 	assert.Equal(t, "MJS", prof.ClusterType, "cluster type should be MJS")
 	assert.Equal(t, expectedName, prof.Name, "profile does not have expected Name field")
 	assert.Equal(t, expectedHost, prof.SchedulerComponent.Host, "profile does not have expected Host field")
+	assert.Equal(t, expectedName, prof.SchedulerComponent.Name, "profile scheduler component name does not match expected name")
 }
