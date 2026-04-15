@@ -298,22 +298,29 @@ func decodeCert(certPEM string) (*x509.Certificate, error) {
 	return x509.ParseCertificate(block.Bytes)
 }
 
-// Decode a PEM-encoded private key
+// decodeKey decodes a PEM-encoded RSA private key string into an *rsa.PrivateKey.
+// It returns an error if decoding fails, the block type is unexpected, parsing fails,
+// or the key is not an RSA private key.
 func decodeKey(keyPEM string) (*rsa.PrivateKey, error) {
+	// Decode the PEM block from the input string
 	block, _ := pem.Decode([]byte(keyPEM))
 	if block == nil {
-		return nil, fmt.Errorf("failed to decode private key")
+		return nil, fmt.Errorf("failed to decode private key") // PEM decoding failed
 	}
+	// Check the block type to ensure it's a private key
 	if block.Type != keyType {
 		return nil, fmt.Errorf("unexpected block type for private key: %s", block.Type)
 	}
+	// Parse the private key from the block bytes (PKCS#8 format)
 	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, err
+		return nil, err // Parsing failed
 	}
+	// Ensure the parsed key is actually an *rsa.PrivateKey
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	if !ok {
 		return nil, fmt.Errorf("not an RSA private key")
 	}
+	// Return the RSA private key
 	return rsaKey, nil
 }

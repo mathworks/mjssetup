@@ -2,6 +2,8 @@
 package certificate
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"testing"
@@ -123,7 +125,7 @@ func verifyCreateSharedSecret(t *testing.T) *SharedSecret {
 
 	// Check that the loaded secret matches the original secret
 	assert.Equal(t, secret.cert, loadedSecret.cert, "loaded secret certificate does not match original secret")
-	assert.Equal(t, secret.key, loadedSecret.key, "loaded secret key does not match original secret")
+	verifyKeysMatch(t, secret.key, loadedSecret.key)
 	assert.Equal(t, secret.CertPEM, loadedSecret.CertPEM, "loaded secret certificate PEM does not match original secret")
 	assert.Equal(t, secret.KeyPEM, loadedSecret.KeyPEM, "loaded secret key PEM does not match original secret")
 
@@ -166,4 +168,17 @@ func verifyExpiryDate(t *testing.T, cert *x509.Certificate, expectedDays int) {
 	expiryLength := cert.NotAfter.Sub(cert.NotBefore)
 	expiryLengthInDays := int(expiryLength.Hours() / 24)
 	require.Equal(t, expiryLengthInDays, expectedDays, "certificate does not have the expected expiry date")
+}
+
+// Verify that two keys are the same by using both to encrypt and decrypt a string.
+// We do this instead of comparing the content of the keys directly, as that can fail
+// if a key has a leading zero that is stripped during serialization.
+func verifyKeysMatch(t *testing.T, expected, actual *rsa.PrivateKey) {
+	testData := []byte("test message")
+	cipherText, err := rsa.EncryptPKCS1v15(rand.Reader, &expected.PublicKey, testData)
+	require.NoError(t, err, "Failed to encrypt with expected key")
+
+	plainText, err := rsa.DecryptPKCS1v15(rand.Reader, actual, cipherText)
+	require.NoError(t, err, "Failed to decrypt with actual private key")
+	assert.Equal(t, string(testData), string(plainText), "Failed to decrypt encrypted message; private keys do not match")
 }

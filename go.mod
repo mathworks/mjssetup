@@ -1,11 +1,11 @@
 // Copyright 2023-2025 The MathWorks, Inc.
 module github.com/mathworks/mjssetup
 
-go 1.23.5
+go 1.26
 
 require (
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/crypto v0.33.0
+	golang.org/x/crypto v0.44.0
 )
 
 require (

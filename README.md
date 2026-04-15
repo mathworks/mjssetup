@@ -26,7 +26,7 @@ You can download pre-compiled binaries for Linux&reg; and Windows&reg; from the 
 - `command` - Command to execute.
 - `args` - Inputs to the command to execute. The types of the inputs depend on the command.
 
-To display the help text for mjssetup, run
+For a list of MATLAB Job Scheduler commands that mjssetup supports, run this command:
 ```
 mjssetup -help
 ```

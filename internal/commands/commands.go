@@ -317,12 +317,14 @@ var usageExamples = map[string][]usageExample{
 
 // Print general help text
 func printAllHelp(writer StringWriter) {
-	writer.WriteString(fmt.Sprintf("mjssetup: Tool for performing setup tasks for an MJS cluster.\n%s\n", getAllUsageText()))
+	writer.WriteString(fmt.Sprintf("mjssetup: Tool for performing setup tasks for an MJS cluster.\n\n%s\n", getAllUsageText()))
 }
 
 // Create a string containing usage text for all commands
 func getAllUsageText() string {
 	txt := fmt.Sprintf("Usage: %s <command> [<args>]", getExecutableName())
+	txt += fmt.Sprintf("\n\nAvailable commands: %s", strings.Join(AllCommands, ", "))
+
 	for _, cmd := range AllCommands {
 		txt = fmt.Sprintf("%s\n\n%s", txt, getUsageText(cmd, true))
 	}
