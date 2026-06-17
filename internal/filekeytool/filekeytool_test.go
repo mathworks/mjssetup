@@ -1,4 +1,4 @@
-// Copyright 2024-2025 The MathWorks, Inc.
+// Copyright 2024-2026 The MathWorks, Inc.
 package filekeytool_test
 
 import (
@@ -290,14 +290,14 @@ func verifyGenerateMetricsCertificatesAndKeys(t *testing.T, kt keytool.Keytool, 
 }
 
 type mocks struct {
-	certCreator *mockCertCreator.Creator
-	fileHandler *mockFileKeytool.FileHandler
+	certCreator *mockCertCreator.MockCreator
+	fileHandler *mockFileKeytool.MockFileHandler
 }
 
 // Create a dummy Keytool that use mocks
 func newWithMocks(t *testing.T) (keytool.Keytool, *mocks) {
-	mockCert := mockCertCreator.NewCreator(t)
-	mockFileHandler := mockFileKeytool.NewFileHandler(t)
+	mockCert := mockCertCreator.NewMockCreator(t)
+	mockFileHandler := mockFileKeytool.NewMockFileHandler(t)
 	return filekeytool.New(mockFileHandler, mockCert), &mocks{
 		certCreator: mockCert,
 		fileHandler: mockFileHandler,

@@ -1,4 +1,4 @@
-// Copyright 2023-2025 The MathWorks, Inc.
+// Copyright 2023-2026 The MathWorks, Inc.
 // The commands package contains logic for running commands based on input arguments.
 package commands
 
@@ -122,7 +122,6 @@ func (c *CommandRunner) parseCreateSharedSecretInputs(args []string, flags *flag
 	if err != nil {
 		return nil, err
 	}
-	inputs.Outfile = ensureJSON(inputs.Outfile)
 	return &inputs, nil
 }
 
@@ -151,7 +150,6 @@ func (c *CommandRunner) parseGenerateCertificateInputs(args []string, flags *fla
 	if inputs.SecretFile == "" {
 		return nil, getErrorForMissingArg(GenerateCertificateCmd, "must provide path to shared secret file (-secretfile)")
 	}
-	inputs.Outfile = ensureJSON(inputs.Outfile)
 	return &inputs, nil
 }
 

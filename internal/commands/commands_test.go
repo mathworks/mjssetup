@@ -1,4 +1,4 @@
-// Copyright 2023-2025 The MathWorks, Inc.
+// Copyright 2023-2026 The MathWorks, Inc.
 package commands_test
 
 import (
@@ -81,7 +81,7 @@ func TestCreateSharedSecretWithOutfile(t *testing.T) {
 
 func TestCreateSharedSecretNoExtension(t *testing.T) {
 	outfileNoExt := "my_outfile"
-	verifyCreateSharedSecretOutfile(t, outfileNoExt, outfileNoExt+".json")
+	verifyCreateSharedSecretOutfile(t, outfileNoExt, outfileNoExt)
 }
 
 func TestCreateSharedSecretCapitalJSONExtension(t *testing.T) {
@@ -96,7 +96,7 @@ func TestGenerateCertificateWithOutfile(t *testing.T) {
 
 func TestGenerateCertificateNoExtension(t *testing.T) {
 	outfileNoExt := "my-cert"
-	verifyGenerateCertificateOutfile(t, outfileNoExt, outfileNoExt+".json")
+	verifyGenerateCertificateOutfile(t, outfileNoExt, outfileNoExt)
 }
 
 func TestGenerateCertificateDefaultOutfile(t *testing.T) {
@@ -408,12 +408,12 @@ func verifyPrintCommandHelp(t *testing.T, cmd string, documentedArgs, undocument
 }
 
 type mocks struct {
-	keytool *mockKeytool.Keytool
+	keytool *mockKeytool.MockKeytool
 	writer  *testStringWriter
 }
 
 func newWithMocks(t *testing.T) (*commands.CommandRunner, *mocks) {
-	mockKeytool := mockKeytool.NewKeytool(t)
+	mockKeytool := mockKeytool.NewMockKeytool(t)
 	fakeWriter := &testStringWriter{}
 	return commands.NewCommandRunner(mockKeytool, fakeWriter), &mocks{
 		keytool: mockKeytool,
